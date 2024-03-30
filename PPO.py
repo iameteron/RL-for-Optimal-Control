@@ -105,7 +105,7 @@ class PPO(nn.Module):
         dist = Normal(mean, torch.exp(log_std))
         old_log_probs = dist.log_prob(actions).detach()
 
-        for epoch in range(self.epoch_n):
+        for _ in range(self.epoch_n):
 
             idxs = np.random.permutation(returns.shape[0])
             for i in range(0, returns.shape[0], self.batch_size):
