@@ -32,17 +32,23 @@ class PPO(nn.Module):
 
         self.observable_states = observable_states
 
+        self.n_neurons = 128
+
         self.pi_model = nn.Sequential(
-            nn.Linear(len(self.observable_states), 16), 
+            nn.Linear(len(self.observable_states), self.n_neurons), 
             nn.ReLU(),
-            nn.Linear(16, 2 * self.action_dim), 
+            nn.Linear(self.n_neurons, self.n_neurons), 
+            nn.ReLU(),
+            nn.Linear(self.n_neurons, 2 * self.action_dim), 
             nn.Tanh()
         )
 
         self.v_model = nn.Sequential(
-            nn.Linear(len(self.observable_states), 16), 
+            nn.Linear(len(self.observable_states), self.n_neurons), 
             nn.ReLU(),
-            nn.Linear(16, 1)
+            nn.Linear(self.n_neurons, self.n_neurons), 
+            nn.ReLU(),
+            nn.Linear(self.n_neurons, 1)
         )
 
         self.gamma = gamma
@@ -142,8 +148,9 @@ class PPO(nn.Module):
                 v_loss = self.v_lambda * torch.mean(b_advantage ** 2)
 
                 # HJB loss
-                b_hjb_loss = hjb_loss(self, b_states, b_next_states, b_rewards)
-                v_loss += self.hjb_lambda * b_hjb_loss
+                if self.hjb_lambda != 0:
+                    b_hjb_loss = hjb_loss(self, b_states, b_next_states, b_rewards)
+                    v_loss += self.hjb_lambda * b_hjb_loss
 
                 v_loss.backward()
                 self.v_optimizer.step()
@@ -170,7 +177,6 @@ class PPO(nn.Module):
 
         frames = []
         while True:
-
             trajectory['states'].append(state)
 
             if sb3 == True:
