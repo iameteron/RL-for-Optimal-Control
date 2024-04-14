@@ -22,7 +22,7 @@ class PPO(nn.Module):
             v_lr: float = 3e-4,
             hjb_lambda: float = 0,
             v_lambda: float = 1,
-            dt: float = 0.1
+            dt: float = 0.1,
         ):
 
         super().__init__()

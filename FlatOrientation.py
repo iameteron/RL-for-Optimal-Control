@@ -68,7 +68,7 @@ class FlatOrientation(gym.Env):
         t_curr = self.state[0]
         t_next = self.state[0] + self.dt
         x_curr = self.state[1:]
-        df_dt = lambda t, x: rhs(t, x, u)
+        df_dt = lambda t, x: self.rhs(t, x, u)
         x_next = self.integrate(df_dt, t_curr, t_next, x_curr, u)
         self.state = np.hstack((t_next, x_next)) 
 
@@ -79,7 +79,7 @@ class FlatOrientation(gym.Env):
 
     def integrate(self, df_dt, t_curr, t_next, x_curr, u):
         if self.integration == 'Euler':
-            x_next = rhs(t_curr, x_curr, u) * self.dt + x_curr
+            x_next = self.rhs(t_curr, x_curr, u) * self.dt + x_curr
 
         else:
             sol = solve_ivp(df_dt, (t_curr, t_next), x_curr, method=self.integration)
@@ -88,8 +88,8 @@ class FlatOrientation(gym.Env):
         return x_next
 
     
-def rhs(t, x, u):
-    return np.array([x[1], u[0]])
+    def rhs(self, t, x, u):
+        return np.array([x[1], u[0]])
 
 
 def plot_u(env, agent, n=1, initial_state=None):

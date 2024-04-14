@@ -1,8 +1,17 @@
 import gym
 import random
 import numpy as np
+from scipy.integrate import solve_ivp
 
 import matplotlib.pyplot as plt
+
+def default_reward(env, u):
+    # индуцируется классической постановкой
+    reward = - env.dt * (np.sum(np.abs(u)))
+    if np.isclose(env.state[0] + env.dt, env.t_end):
+        reward += - env.R1 * env.state[1]**2 - env.R2 * env.state[2]**2 - env.R3 * env.state[3]**2
+    return reward
+
 
 class Orientation3D(gym.Env):
     def __init__(
@@ -19,41 +28,38 @@ class Orientation3D(gym.Env):
             a2: float = 1 / 6,
             a3: float = 1 / 6,
             max_action: int = 200,
+            reward_function = default_reward,
             observable_states: list = [0, 1, 2, 3],
-            ic_boundaries: list = [[23.5, 24.5], [15.5, 16.5], [15.5, 16.5]]
+            ic_boundaries: list = [[23.5, 24.5], [15.5, 16.5], [15.5, 16.5]],
+            integration: str = 'RK45'
     ):
 
         self.t_start = t_start
         self.t_end = t_end
         self.dt = dt
-
         self.R1 = R1
         self.R2 = R2
         self.R3 = R3
-
         self.l = l
         self.mu = mu
         self.a1 = a1
         self.a2 = a2
         self.a3 = a3
-
         self.max_action = max_action
-
         self.ic_boundaries = np.array(ic_boundaries)
-
         self.observable_states = observable_states
         low = np.array([0, -50, -50, -50])
         high = np.array([1, 50, 50, 50])
-
         self.observation_space = gym.spaces.Box(
             low=low[observable_states], 
             high=high[observable_states], 
             dtype=np.float32
         )
-
         self.action_space = gym.spaces.Box(
             low=-self.max_action, high=self.max_action, shape=(1,), dtype=np.float32
         )
+        self.integration = integration
+        self.reward_function = reward_function
 
     def reset(self, seed=None, options=None, random_time=False):
         if random_time:
@@ -68,30 +74,35 @@ class Orientation3D(gym.Env):
         return self.state, {}
     
     def step(self, u):
+        t_curr = self.state[0]
         t_next = self.state[0] + self.dt
         x_curr = self.state[1:]
-        df1_dt = self.a1 * u[0] - (self.l - self.mu) * x_curr[1] * x_curr[2]
-        df2_dt = (self.a2 * u[1] - (1 - self.l) * x_curr[2] * x_curr[0]) / self.mu
-        df3_dt = (self.a3 * u[2] - (self.mu - 1) * x_curr[0] * x_curr[1]) / self.l
-        df_dt = np.array([df1_dt, df2_dt, df3_dt])
-        x_next = self.integration(x_curr, df_dt)
+        df_dt = lambda t, x: self.rhs(t, x, u)
+        x_next = self.integrate(df_dt, t_curr, t_next, x_curr, u)
         self.state = np.hstack((t_next, x_next)) 
 
-        if np.isclose(t_next, self.t_end):
-            reward = - self.R1 * self.state[1]**2 - self.R2 * self.state[2]**2 - self.R3 * self.state[3]**2
-            reward -= self.dt * (np.sum(np.abs(u)))
-            done = True
-
-        else:
-            reward = - self.dt * (np.sum(np.abs(u)))
-            done = False
+        reward = self.reward_function(self, u)
+        done = np.isclose(t_next, self.t_end)
 
         return self.state, reward, False, done, {}
 
-    def integration(self, x_curr, df_dt, method='Euler'):
-        if method == 'Euler':
-            x_next = df_dt * self.dt + x_curr
-            return x_next
+    def integrate(self, df_dt, t_curr, t_next, x_curr, u):
+        if self.integration == 'Euler':
+            x_next = self.rhs(t_curr, x_curr, u) * self.dt + x_curr
+
+        else:
+            sol = solve_ivp(df_dt, (t_curr, t_next), x_curr, method=self.integration)
+            x_next = sol.y.T[-1]
+
+        return x_next
+
+    def rhs(self, t, x, u):
+        df1_dt = self.a1 * u[0] - (self.l - self.mu) * x[1] * x[2]
+        df2_dt = (self.a2 * u[1] - (1 - self.l) * x[2] * x[0]) / self.mu
+        df3_dt = (self.a3 * u[2] - (self.mu - 1) * x[0] * x[1]) / self.l
+        df_dt = np.array([df1_dt, df2_dt, df3_dt])
+
+        return df_dt
 
 
 def plot_u(env, agent, n=1, initial_state=None):
@@ -103,12 +114,18 @@ def plot_u(env, agent, n=1, initial_state=None):
         u3 = agent.max_action * actions[:, 2]
         t = np.arange(env.t_start, env.t_end + env.dt, env.dt)
 
+        new_u1 = np.repeat(u1, 2)
+        new_u2 = np.repeat(u2, 2)
+        new_u3 = np.repeat(u3, 2)
+        new_t = np.repeat(t, 2)
+        new_t = new_t[1:-1]
+
         kwargs_x1 = {'color': 'blue'}
         kwargs_x2 = {'color': 'orange'}
         kwargs_x3 = {'color': 'green'}
-        plt.plot(t[:-1], u1, **kwargs_x1)
-        plt.plot(t[:-1], u2, **kwargs_x2)
-        plt.plot(t[:-1], u3, **kwargs_x3)
+        plt.plot(new_t, new_u1, **kwargs_x1)
+        plt.plot(new_t, new_u2, **kwargs_x2)
+        plt.plot(new_t, new_u3, **kwargs_x3)
 
     plt.plot([], [], label=r'$ p $', **kwargs_x1)
     plt.plot([], [], label=r'$ q $', **kwargs_x2)
