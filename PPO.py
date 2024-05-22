@@ -172,8 +172,9 @@ class PPO(nn.Module):
             state = env.reset()[0]
         else:
             env.reset()
-            env.state = initial_state
-            state = initial_state
+            env.observation = initial_state
+            env.state = [observation / max_value for observation, max_value in zip(env.observation, env.high)]
+            state = env.state
 
         frames = []
         while True:
